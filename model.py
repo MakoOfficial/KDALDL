@@ -596,23 +596,33 @@ class CBAM(nn.Module):
         return out
 
 
-class eca_block(nn.Module):
-    def __init__(self, channel, gamma=2, b=1):  #64
-        super(eca_block, self).__init__()
-        kernel_size = int(abs((math.log(channel,2)+  b)/gamma))  #3
-        kernel_size = kernel_size if kernel_size % 2  else kernel_size+1  #3
-        padding = kernel_size//2
-        self.avg_pool =nn.AdaptiveAvgPool2d(1)
-        self.conv = nn.Conv1d(1, 1, kernel_size, padding=padding, bias=False)
+class eca_layer(nn.Module):
+    """Constructs a ECA module.
+    Args:
+        channel: Number of channels of the input feature map
+        k_size: Adaptive selection of kernel size
+    """
+
+    def __init__(self, channel, k_size=3):
+        super(eca_layer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        b, c, h, w = x.size()  #torch.Size([2, 64, 26, 26])
-        #变成序列的形式
-        avg = self.avg_pool(x).view([b, 1, c])   #torch.Size([2, 64, 1, 1])   torch.Size([2, 1, 64])
-        out = self.conv(avg)                     #torch.Size([2, 1, 64])
-        out = self.sigmoid(out).view([b, c, 1, 1])  #torch.Size([2, 64, 1, 1])
-        return out * x
+        # x: input features with shape [b, c, h, w]
+        b, c, h, w = x.size()
+
+        # feature descriptor on the global spatial information
+        y = self.avg_pool(x)
+
+        # Two different branches of ECA module
+        y = self.conv(y.squeeze(-1).transpose(-1, -2)).transpose(-1, -2).unsqueeze(-1)
+
+        # Multi-scale information fusion
+        y = self.sigmoid(y)
+
+        return x * y.expand_as(x)
 
 
 class CA_Block(nn.Module):
@@ -673,7 +683,8 @@ class ResAndFusion(nn.Module):
             nn.ReLU()
         )
 
-        self.SeBlock = SEBlock(self.out_channels)
+        # self.SeBlock = SEBlock(self.out_channels)
+        self.ECA = eca_layer(self.out_channels)
 
         self.MLP = nn.Sequential(
             nn.Linear(in_features=self.out_channels + gender_length, out_features=1024),
@@ -699,7 +710,8 @@ class ResAndFusion(nn.Module):
 
         # concat
         fusion_feature = torch.cat((p5, p4, p3, c2), dim=1)
-        fusion_feature = self.SeBlock(fusion_feature)
+        # fusion_feature = self.SeBlock(fusion_feature)
+        fusion_feature = self.ECA(fusion_feature)
 
         fusion_vector = self.avgpool(fusion_feature)
         fusion_vector = torch.squeeze(fusion_vector)

@@ -198,7 +198,7 @@ def train_fn(net, train_loader, loss_fn, loss_KL, epoch, optimizer):
         # backward,update parameter
         optimizer.step()
         batch_loss = loss.item()
-        batch_KL_loss = (0.5 * KLLoss).item()
+        batch_KL_loss = KLLoss.item()
 
         training_loss += batch_loss
         training_KL_loss += batch_KL_loss
@@ -238,7 +238,7 @@ from model import get_My_resnet50, ResAndFusion
 
 
 def map_fn(flags):
-    model_name = f'Res50AndFusion_addSE_LDL_256'
+    model_name = f'Res50AndFusion_addECA_LDL_256'
     # Acquires the (unique) Cloud TPU core corresponding to this process's index
     # gpus = [0, 1]
     # torch.cuda.set_device('cuda:{}'.format(gpus[0]))
